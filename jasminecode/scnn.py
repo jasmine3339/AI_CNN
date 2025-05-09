@@ -15,10 +15,10 @@ from torch.autograd import Variable
 import torch.nn.functional as F
 import torch.optim as optim
 
+"""feel free to remove any prints, they are mainly there so i can see where the program crashes"""
 
 
-
-# Creating some helper functions
+#functions to show a graph of the loss
 def imshow(img, text=None):
     npimg = img.numpy()
     plt.axis("off")
@@ -36,12 +36,19 @@ def show_plot(iteration,loss):
 class SiameseNetworkDataset(Dataset):
     def __init__(self,imageFolderDataset):
         print("slay")
+        """this will have to be the result of yours"""
         self.imageFolderDataset = imageFolderDataset
         #self.transform = transform
-        self.setTransforms()
+        
+        """im guessing they dont need to be transformed because the mask"""
+        #self.setTransforms()
+        
         #self.getsizes()
 
     def __getitem__(self, index):
+        """this is for getting the images from the folders, this wont work the same way, but im not sure 
+        how it needs changing. it gets about half the images from the same class as the one it is comparing them 
+        all to, and adds them to the list"""
         # image 0 is a random image from the set
         img0_tuple = random.choice(self.imageFolderDataset.imgs)
         #print("img0 = "+ img0_tuple[0][32:])
@@ -74,14 +81,6 @@ class SiameseNetworkDataset(Dataset):
                     img1_tuple = randomlist[i]
                     #print("break")
                     break
-            
-                
-
-                #img1_tuple = random.choice(self.imageFolderDataset.imgs)
-            #print("same: img 1 = "+img1_tuple[0][32:])
-                #if img0_tuple[0] == img1_tuple[1] or count>10:
-                    #break
-                #count+=1
         else:
             while True:
                 #finding image from different class
@@ -96,12 +95,6 @@ class SiameseNetworkDataset(Dataset):
         ##open both images
         img0 = Image.open(img0_tuple[0]).convert('RGB')
         img1 = Image.open(img1_tuple[0]).convert('RGB')
-        
-        
-        
-        #L = grayscale, P = is 256 colours, so less space then og ??
-        #img0 = img0.convert("P")
-        #img1 = img1.convert("P")
 
         #transform the images, based on the transformation input
         if self.transform is not None:
@@ -131,7 +124,6 @@ class SiameseNetworkDataset(Dataset):
         print("W:",width,"H:",height)
         
     def getsizes(self):
-        
         for i in self.imageFolderDataset:
             width, height = i.size
             print("W:",width,"H:",height)
@@ -140,6 +132,7 @@ class SiameseNetworkDataset(Dataset):
 
 
 """
+This was just from me testing the items were being loaded into the system right
 
 # Create a simple dataloader just for simple visualization
 vis_dataloader = DataLoader(siamese_dataset,
@@ -163,21 +156,14 @@ imshow(torchvision.utils.make_grid(concatenated))
 
 class SiameseNetwork(nn.Module):
     def __init__(self):
-        
         super(SiameseNetwork, self).__init__()
-        """
-        #convlutional layer, 3 is for rgb, 6 idk why, but is the first in the next layer, 5 is the kernal size 
-        self.conv1 = nn.Conv2d(3,6,5)
-        #pool typically uses 2,2
-        self.pool = nn.MaxPool2d(2,2)
-        self.conv2 = nn.Conv2d(6,16,5)
-
-        #fully connected layers, are executed after all convs have been executed
-        self.fc1 = nn.Linear(3952144,120)
-        self.fc2 = nn.Linear(120, 84)
-        self.fc3 = nn.Linear(84, 10)
-        """
+        """the first number is 3 because the images are rgb images, so that may have to 
+            change. if any errors occur with the numbers it not normally to hard to fix. 
+            i tried to calculate all the numbers properly and did a bunch of maths and planning, 
+            and none of it worked, so honestly these are all kind of random from a bunch of sources 
+            and me just seeing what works, so if all else fails, change the numbers however you feel."""
         self.cnn1 = nn.Sequential(
+            
             nn.Conv2d(3,143,kernel_size=5),
             nn.ReLU(inplace=True),
             nn.MaxPool2d(3, stride = 2),
@@ -190,7 +176,20 @@ class SiameseNetwork(nn.Module):
             nn.ReLU(inplace=True),
             nn.MaxPool2d(3, stride = 2)
 
+        )
 
+        # Setting up the Fully Connected Layers
+        self.fc1 = nn.Sequential(
+            nn.Linear(72963, 3097),
+            nn.ReLU(inplace=True),
+            
+            nn.Linear(3097, 1024),
+            nn.ReLU(inplace=True),
+
+            nn.Linear(1024, 256),
+            nn.ReLU(inplace=True),
+            
+            nn.Linear(256,2)
         )
         """
         # Setting up the Sequential of CNN Layers
@@ -208,42 +207,21 @@ class SiameseNetwork(nn.Module):
         )
         """
 
-        # Setting up the Fully Connected Layers
-        self.fc1 = nn.Sequential(
-            nn.Linear(72963, 3097),
-            nn.ReLU(inplace=True),
-            
-            nn.Linear(3097, 1024),
-            nn.ReLU(inplace=True),
-
-            nn.Linear(1024, 256),
-            nn.ReLU(inplace=True),
-            
-            nn.Linear(256,2)
-        )
-
     def forward_once(self, x):
         # This function will be called for both images
-        # It's output is used to determine the similiarity
-        #x = x.view(x.size(0), -1)
-        #print(x+"=numberr")
+        # applying the layers we defined above, use this to find the similarity.
         output = self.cnn1(x)
         output = output.view(output.size()[0], -1)
         output = self.fc1(output)
         return output
     
     def forward(self, input1, input2):
-        # In this function we pass in both images and obtain both vectors
+        # In this function we pass in both images and get both vectors
         # which are returned
-        output1 = self.forward_once(input1)
-        output2 = self.forward_once(input2)
+        vector1 = self.forward_once(input1)
+        vector2 = self.forward_once(input2)
 
-        return output1, output2
-
-
-
-
-
+        return vector1, vector2
 
 # Define the Contrastive Loss Function
 class ContrastiveLoss(torch.nn.Module):
@@ -257,16 +235,14 @@ class ContrastiveLoss(torch.nn.Module):
 
       loss_contrastive = torch.mean((1-label) * torch.pow(euclidean_distance, 2) +
                                     (label) * torch.pow(torch.clamp(self.margin - euclidean_distance, min=0.0), 2))
-
-
+      
       return loss_contrastive
     
-
+"""this will already be set, so the image masks will just need to go to the siamese network """
 folder_dataset = datasets.ImageFolder(root="picture_all_visits/train - Copy/")
 print("1\n")
 siamese_dataset = SiameseNetworkDataset(imageFolderDataset=folder_dataset)
 print("2\n")
-
 
 train_dataloader = DataLoader(siamese_dataset,
                         shuffle=True,
@@ -274,20 +250,25 @@ train_dataloader = DataLoader(siamese_dataset,
                         batch_size=8)
 
 print("3\n")
-#device = torch.device("cpu")
 net = SiameseNetwork().cpu()
-criterion = ContrastiveLoss()
+loss = ContrastiveLoss()
 optimizer = optim.Adam(net.parameters(), lr = 0.0005 )
 print("4\n")
 counter = []
 loss_history = [] 
 iteration_number= 0
+
+##when using multi threading in windows, this needs to be included so a runtime error doesnt occur
 if __name__ == '__main__':
     # Iterate throught the epochs
-    for epoch in range(10):
+    """this is set to 1 to check it works, i think it will need to be at least 25 for anything good to happen,
+    but it takes so much longer. i tried 10 and the results didnt improve at all, so if you have time maybe try 1 and 10
+    and see if there is any improvements"""
+    for epoch in range(1):
         print("5")
         # Iterate over batches
         for i, (img0, img1, label) in enumerate(train_dataloader, 0):
+            #train dataloader took a lot to figure out how to iterate over it, but it works like this.
         #print(enumerate(train_dataloader)[0])
         #while next(train_dataloader):
         #for data in train_dataloader:
@@ -295,16 +276,17 @@ if __name__ == '__main__':
             #print(img0[0])
             #print("6")
             
+            #there is avaliability to send to gpu if compatabler, but my laptop doesnt do that.
             img0, img1, label = img0.cpu(), img1.cpu(), label.cpu()
             
-            # Zero the gradients
+            # make the gradients 0 to start
             optimizer.zero_grad()
 
             # Pass in the two images into the network and obtain two outputs
             output1, output2 = net(img0, img1)
 
             # Pass the outputs of the networks and label into the loss function
-            loss_contrastive = criterion(output1, output2, label)
+            loss_contrastive = loss(output1, output2, label)
 
             # Calculate the backpropagation
             loss_contrastive.backward()
@@ -312,7 +294,7 @@ if __name__ == '__main__':
             # Optimize
             optimizer.step()
 
-            # Every 10 batches print out the loss
+            # Every 10 batches print out the loss to see what its doing
             if i % 10 == 0 :
                 print( "Epoch: ",epoch,"\nCurrent loss:",loss_contrastive.item())
                 iteration_number += 10
@@ -325,6 +307,7 @@ if __name__ == '__main__':
         
 
     # Locate the test dataset and load it into the SiameseNetworkDataset
+    """this will need to be the test images as well."""
     folder_dataset_test = datasets.ImageFolder(root="picture_all_visits/test - Copy/")
     siamese_dataset = SiameseNetworkDataset(imageFolderDataset=folder_dataset_test)
     test_dataloader = DataLoader(siamese_dataset, num_workers=2, batch_size=1, shuffle=True)
@@ -334,18 +317,20 @@ if __name__ == '__main__':
     dataiter = iter(test_dataloader)
     x0, _, _ = next(dataiter)
     for i in range(10):
+
         # Iterate over 10 images and test them with the first image (x0)
         _, x1, label2 = next(dataiter)
-        print(next(dataiter)[2].numpy().reshape(-1))
+        #weather the images are the same or different classes so you dont have to see each image
+        print(next(dataiter)[2].numpy().reshape(-1)) 
         # Concatenate the two images together
         concatenated = torch.cat((x0, x1), 0)
-        #print(x0)
-        #print(x1)
         
         output1, output2 = net(x0.cpu(), x1.cpu())
         euclidean_distance = F.pairwise_distance(output1, output2)
         
+        #can show images with this one
         #imshow(torchvision.utils.make_grid(concatenated), f'Dissimilarity: {euclidean_distance.item():.2f}')
+
         print("Dissimilarity: ",euclidean_distance.item())
 
 print("10")
